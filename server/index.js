@@ -17,12 +17,16 @@ const bodyParser = require("body-parser")
 const cookieParser = require("cookie-parser")
 
 const config = require('./config/key')
+// config key에 있는 MongoURI
+
+const {auth} =require('../middleware/auth')
 
 app.use(bodyParser.urlencoded({extended: true}));
 //  application/ x-www-form-urlencoded 를 분석해서 가져오게 해주는 코드
 app.use(bodyParser.json());
 //  application/json 타입으로 된 것을 분석해서 가져오게 해주는 코드
 app.use(cookieParser());
+// cookieParser를 사용하겠다.
 
 // Mongooose를 이용해서 우리 app과 mongo db 연결
 const mongoose = require('mongoose')
@@ -49,7 +53,7 @@ app.get('/api/hello', (req,res) => {
 
 
 // 회원가입을 위한 Register Route를 만들어 준다.
-app.post('/register', (req, res) => {
+app.post('/api/users/register', (req, res) => {
 
     //회원 가입 할때 필요한 정보들을 client에서 받아오면, 그것들을 데이터 베이스에 넣어준다.    
     const user = new User(req.body)
@@ -64,20 +68,24 @@ app.post('/register', (req, res) => {
     }))
 })
 
-app.post('/login', (req, res) => {
+// !!!!!로그인 api !!!!!!!!!!!!!!!
+app.post('/api/users/login', (req, res) => {
 
     // 요청한 이메일이 데이테베이스에 있는지 찾는다.
-    User.findOne({
-        email: req.body.email
-    }, (err, user) => {
+    // User 유저 스키마를 가져온다 . findOne 몽고db에서 제공하는 method
+    User.findOne({email: req.body.email}, (err, user) => {
+        // 유저가 없다면, 
         if (!user) {
             return res.json({
                 loginSuccess: false,
                 message: "제공된 이메일에 해당하는 유저가 없습니다."
             })
-
         }
+        // 유저가 있다면, 요청된 이메일이 데이터베이스에 있다면 비밀번호가 맞는 비밀번호인지 확인!   
+        // comparePassword는 user.js 에서 만들어야한다. mongodb에서 제공하는 method가 아님
         user.comparePassword(req.body.password, (err, isMatch) => {
+            // user는 클라에서 입력한 아이디, 비번이 들어가있음.
+            // req.body.password는 클라에서 입력한 raw password임.
             if (!isMatch)
                 return res.json({
                     loginSuccess: false,
@@ -87,20 +95,55 @@ app.post('/login', (req, res) => {
             //비밀번호 까지 맞다면 토큰을 생성하기.
 
             user.generateToken((err, user) => {
-                if (err) return res.status(400).send(err);
+                // user에는 token이 들어있다.
+                if(err) return res.status(400).send(err);
+                // 에러가 있다면 에러메세지 전달
 
-                // 토큰을 저장한다. 어디에 ? 쿠키, 로컬스토리지
+                // 토큰을 저장한다. 어디에 ? 쿠키 or 로컬스토리지
                 res.cookie("x_auth", user.token)
+                // cookie에 저장하는 과정
                     .status(200)
                     .json({
-                        loginSuccess: true,
-                        userId: user._id
-                    })
+                        loginSuccess: true, userId: user._id})
             })
-
         })
-    }) // 요처된 이메일이 데이터베이스에 있다면 비밀번호가 맞는 비밀번호인지 확인!     
+    })  
 })
+
+// !!!!!!!!!!!!!!!!!!!!!! 인증 authentication 부분 !!!!!!!!!!!!!!!!!!!!!!!!!!
+
+app.get('/api/users/auth', auth, (req, res) => {
+
+    // 여기 까지 미들웨어를 통과해 왔다는 얘기는 auth 이 True 라는 말.
+
+    res.status(200).json({
+        _id : req.user._id,
+        isAdmin : req.user.role === 0 ? false : true,
+        // role이 1이면 admin(관리자). role이 2면 특정부서 admin(관리자).
+        // role이 0이면 일반유저 role이 0이 아니면 관리자.
+        isAuth : true,
+        email : req.user.email,
+        name: req.user.name,
+        lastname : req.user.lastname,
+        role: req.user.role,
+        image : req.user.image
+
+    })
+})
+
+app.get('/api/users/logout', auth, (req,res)=>{
+
+    // 로그아웃 하려는 유저를 db에서 찾는다.
+    User.findOneAndUpdate({_id : req.user._id}, {token: ""}, (err,user)=>{
+        if(err) return res.json({usccess:false, err});
+        // 성공하면
+        return res.status(200).send({
+            success : true
+        })
+    })
+})
+
+
 
 
 app.listen(port, () => {

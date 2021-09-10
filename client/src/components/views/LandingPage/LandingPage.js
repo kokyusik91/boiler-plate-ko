@@ -15,11 +15,12 @@ function LandingPage() {
 
     useEffect(() =>{
         axios.get('/api/hello')
+        // axios.get('http://localhost:5000/api/hello')
         // get request를 서버에게 보낸다.
         .then(response => console.log(response.data))
     }, [])
 
-    //렌딩페이
+    //렌딩페이지
 
     return (
         <div style={style}>
